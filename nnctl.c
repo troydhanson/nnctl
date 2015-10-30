@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
       case 'h': default: usage(argv[0]); break;
     }
   }
-  if (optind < argc) CF.nn_addr = strdup(optarg);
+  if (optind < argc) CF.nn_addr = strdup(argv[optind++]);
   if (setup_nn()) goto done;
   using_history();
 
