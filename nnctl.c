@@ -13,6 +13,19 @@
 #include <nanomsg/nn.h>
 #include <nanomsg/reqrep.h>
 
+/* 
+ * nnctl - This is the client part of the nano control port (nnctl). Run as:
+ *
+ *   nnctl <address> 
+ *
+ * to connect to a nnctl-enabled process. Enter 'help', 'quit', etc.
+ * To test this program with a dummy remote use the nanomsg nn_rep utility:
+ *
+ *   nn_rep -L3333 -Dpong -A      (in one terminal)
+ *   nnctl tcp://127.0.0.1:3333   (in another terminal)
+ *
+ */
+
 struct _CF {
   int run;
   int verbose;
