@@ -63,58 +63,57 @@ char *find_word(char *c, char **start, char **end) {
 }
 
 #define alloc_msg(n,m) ((m)=realloc((m),(++(n))*sizeof(*(m))))
+#define MAX_IV 100
 int do_rqst(char *line) {
-#if 0
   char *c=line, *start=NULL, *end=NULL, *buf;
-  int nmsgs=0; zmq_msg_t *msgs = NULL;
-  int rmsgs=0; zmq_msg_t *msgr = NULL;
-  size_t sz;
-  zmq_rcvmore_t more; size_t more_sz = sizeof(more);
-  int i, rc = -1;
+  int rc = -1;
+
+  struct nn_msghdr hdr;
+  memset(&hdr, 0, sizeof(hdr));
+  struct nn_iovec iv[MAX_IV], *w;
+  hdr.msg_iov = iv;
+  hdr.msg_iovlen = 0;
 
   /* parse the line into argv style words, pack and transmit the request */
   while(*c != '\0') {
     if ( (c = find_word(c,&start,&end)) == NULL) goto done; // TODO confirm: normal exit?
     //fprintf(stderr,"[%.*s]\n", (int)(end-start), start);
     assert(start && end);
-    alloc_msg(nmsgs,msgs);
-    buf = start; sz = end-start;
-    zmq_msg_init_size(&msgs[nmsgs-1],sz);
-    memcpy(zmq_msg_data(&msgs[nmsgs-1]),buf,sz);
+    w = &iv[hdr.msg_iovlen++];
+    if (hdr.msg_iovlen == MAX_IV) goto done;
+    w->iov_base = start;
+    w->iov_len = end-start;
     start = end = NULL;
   }
 
   // send request
-  for(i=0; i<nmsgs; i++) {
-    if (zmq_sendmsg(CF.req_socket, &msgs[i], (i<nmsgs-1)?ZMQ_SNDMORE:0) == -1) {
-      fprintf(stderr,"zmq_sendmsg: %s\n", zmq_strerror(errno));
-      goto done;
-    }
+  rc = nn_sendmsg(CF.nn_socket, &hdr, 0);
+  if (rc < 0) {
+    fprintf(stderr,"nn_sendmsg: %s\n", nn_strerror(errno));
+    goto done;
   }
 
   // get reply 
-  do {
-    alloc_msg(rmsgs,msgr);
-    zmq_msg_init(&rmsgs[msgr-1]);
-    if (zmq_recvmsg(CF.req_socket, &rmsgs[msgr-1], 0) == -1) {
-      fprintf(stderr,"zmq_recvmsg: %s\n", zmq_strerror(errno));
-      goto done;
-    }
-    buf = zmq_msg_data(&rmsgs[msgr-1]); 
-    sz = zmq_msg_size(&rmsgs[msgr-1]); 
-    printf("%.*s", (int)sz, (char*)buf);
-    if (zmq_getsockopt(CF.req_socket, ZMQ_RCVMORE, &more, &more_sz)) more=0;
-  } while (more);
-  
-  printf("\n");
+  void *reply;
+  memset(&hdr, 0, sizeof(hdr));
+  iv[0].iov_base = &reply;
+  iv[0].iov_len = NN_MSG;
+  hdr.msg_iov = iv;
+  hdr.msg_iovlen = 1;
+  rc = nn_recvmsg(CF.nn_socket, &hdr, 0);
+  if (rc < 0) {
+    fprintf(stderr,"nn_recvmsg: %s\n", nn_strerror(errno));
+    goto done;
+  }
+
+  printf("%.*s\n", rc, (char*)reply);
+  nn_freemsg(reply);
+
   rc = 0;
 
  done:
-  for(i=0; i<nmsgs; i++) zmq_msg_close(&msgs[i]);
-  for(i=0; i<rmsgs; i++) zmq_msg_close(&msgr[i]);
   if (rc) CF.run=0;
   return rc;
-#endif
 }
  
 int setup_nn() {
