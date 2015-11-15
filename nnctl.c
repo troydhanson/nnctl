@@ -12,18 +12,13 @@
 #include <readline/history.h>
 #include <nanomsg/nn.h>
 #include <nanomsg/reqrep.h>
+#include "tpl.h"
 
 /* 
- * nnctl - This is the client part of the nano control port (nnctl). Run as:
+ * nnctl
  *
- *   nnctl <address> 
- *
- * to connect to a nnctl-enabled process. Enter 'help', 'quit', etc.
- * To test this program with a dummy remote use the nanomsg nn_rep utility:
- *
- *   nn_rep -L3333 -Dpong -A      (in one terminal)
- *   nnctl tcp://127.0.0.1:3333   (in another terminal)
- *
+ * usage:  nnctl <nnctl-remote-address>
+ * 
  */
 
 struct _CF {
@@ -35,14 +30,15 @@ struct _CF {
   int nn_eid;
 } CF = {
   .run = 1,
-  .nn_addr = "tcp://127.0.0.1:3333",
+  .nn_addr = "tcp://127.0.0.1:9995",
   .nn_socket = -1,
-  .prompt = "nn> ",
+  .prompt = "nnctl> ",
 };
 
 void usage(char *prog) {
   fprintf(stderr, "usage: %s [-v] <address>\n", prog);
-  fprintf(stderr, "     -v verbose\n");  
+  fprintf(stderr, "options:\n");  
+  fprintf(stderr, "\t-v verbose\n");  
   exit(-1);
 }
 
@@ -51,7 +47,7 @@ void usage(char *prog) {
 const int ws[256] = {[' ']=1, ['\t']=1};
 char *find_word(char *c, char **start, char **end) {
   int in_qot=0;
-  while ((*c != '\0') && ws[*c]) c++; // skip leading whitespace
+  while ((*c != '\0') && ws[(int)(*c)]) c++; // skip leading whitespace
   if (*c == '"') { in_qot=1; c++; }
   *start=c;
   if (in_qot) {
@@ -59,7 +55,7 @@ char *find_word(char *c, char **start, char **end) {
     *end = c;
     if (*c == '"') { 
       in_qot=0; c++; 
-      if ((*c != '\0') && !ws[*c]) {
+      if ((*c != '\0') && !ws[(int)(*c)]) {
         fprintf(stderr,"text follows quoted text without space\n"); return NULL;
       }
     }
@@ -75,45 +71,39 @@ char *find_word(char *c, char **start, char **end) {
   return c;
 }
 
-#define alloc_msg(n,m) ((m)=realloc((m),(++(n))*sizeof(*(m))))
-#define MAX_IV 100
 int do_rqst(char *line) {
-  char *c=line, *start=NULL, *end=NULL, *buf;
+  char *c=line, *start=NULL, *end=NULL;
+  char *buf=NULL;
+  size_t len;
   int rc = -1;
+  tpl_node *tn=NULL;
+  tpl_bin b;
 
-  struct nn_msghdr hdr;
-  memset(&hdr, 0, sizeof(hdr));
-  struct nn_iovec iv[MAX_IV], *w;
-  hdr.msg_iov = iv;
-  hdr.msg_iovlen = 0;
+  tn = tpl_map("A(B)", &b);
+  if (tn == NULL) goto done;
 
   /* parse the line into argv style words, pack and transmit the request */
   while(*c != '\0') {
-    if ( (c = find_word(c,&start,&end)) == NULL) goto done; // TODO confirm: normal exit?
+    if ( (c = find_word(c,&start,&end)) == NULL) goto done;
     //fprintf(stderr,"[%.*s]\n", (int)(end-start), start);
     assert(start && end);
-    w = &iv[hdr.msg_iovlen++];
-    if (hdr.msg_iovlen == MAX_IV) goto done;
-    w->iov_base = start;
-    w->iov_len = end-start;
+    b.addr = start;
+    b.sz = end-start;
+    tpl_pack(tn,1);
     start = end = NULL;
   }
 
   // send request
-  rc = nn_sendmsg(CF.nn_socket, &hdr, 0);
+  if (tpl_dump(tn, TPL_MEM, &buf, &len) < 0) goto done;
+  rc = nn_send(CF.nn_socket, buf, len, 0);
   if (rc < 0) {
-    fprintf(stderr,"nn_sendmsg: %s\n", nn_strerror(errno));
+    fprintf(stderr,"nn_send: %s\n", nn_strerror(errno));
     goto done;
   }
 
   // get reply 
   void *reply;
-  memset(&hdr, 0, sizeof(hdr));
-  iv[0].iov_base = &reply;
-  iv[0].iov_len = NN_MSG;
-  hdr.msg_iov = iv;
-  hdr.msg_iovlen = 1;
-  rc = nn_recvmsg(CF.nn_socket, &hdr, 0);
+  rc = nn_recv(CF.nn_socket, &reply, NN_MSG, 0);
   if (rc < 0) {
     fprintf(stderr,"nn_recvmsg: %s\n", nn_strerror(errno));
     goto done;
@@ -126,6 +116,8 @@ int do_rqst(char *line) {
 
  done:
   if (rc) CF.run=0;
+  if (tn) tpl_free(tn);
+  if (buf) free(buf);
   return rc;
 }
  
@@ -151,8 +143,7 @@ int setup_nn() {
 }
 
 int main(int argc, char *argv[]) {
-  struct sockaddr_un addr;
-  int opt,rc,quit;
+  int opt,quit;
   char *line;
 
   while ( (opt = getopt(argc, argv, "v+h")) != -1) {
