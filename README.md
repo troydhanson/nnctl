@@ -47,7 +47,7 @@ Note that the nnctl library does not create any nanomsg sockets itself, nor does
 it do any polling on its own.  It relies on the application to provide a rep
 socket, and to poll it as above. When a a message is available, the application calls
 `nnctl_exec`. At this point the nnctl library internally dequeues the request, and
-issues a reply, on tha socket.
+issues a reply, on the REP socket.
 
 Example
 
@@ -57,7 +57,8 @@ An example is included with the nnctl library in `sample/server.c`. To try it:
     sample/server tcp://127.0.0.1:3333 &
     ./nnctl tcp://127.0.0.1:3333
 
-Afterward, use `fg` and Ctrl-C to stop the sample server.
+Use `shutdown` to tell the sample server to shutdown. Then issue `quit` to stop
+nnctl.
 
 Built-in commands
 
@@ -90,7 +91,7 @@ nnctl_append   - Called within a command callback to append a response buffer
 See `libnnctl.h` for the full prototypes.
 
 Command callbacks
-^^^^^^^^^^^^^^^^^
+
 The control port commands you define must have this prototype:
 
     int (nnctl_cmd)(nnctl *cp, nnctl_arg *arg, void *data);
