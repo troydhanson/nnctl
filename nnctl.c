@@ -28,6 +28,7 @@ struct _CF {
   char *nn_addr; 
   int nn_socket;
   int nn_eid;
+  uint64_t cookie;
 } CF = {
   .run = 1,
   .nn_addr = "tcp://127.0.0.1:9995",
@@ -76,11 +77,12 @@ int do_rqst(char *line) {
   char *buf=NULL;
   size_t len;
   int rc = -1;
-  tpl_node *tn=NULL;
+  tpl_node *tn=NULL,*tr=NULL;
   tpl_bin b;
 
-  tn = tpl_map("A(B)", &b);
+  tn = tpl_map("UA(B)", &CF.cookie, &b);
   if (tn == NULL) goto done;
+  tpl_pack(tn,0);
 
   /* parse the line into argv style words, pack and transmit the request */
   while(*c != '\0') {
@@ -109,7 +111,20 @@ int do_rqst(char *line) {
     goto done;
   }
 
-  printf("%.*s\n", rc, (char*)reply);
+  tr = tpl_map("UA(B)", &CF.cookie, &b);
+  if (tr == NULL) goto done;
+  if (tpl_load(tr, TPL_MEM, reply, rc) < 0) goto done;
+  tpl_unpack(tr,0);
+  if (CF.verbose) {
+    printf("Cookie: %lu\n", (unsigned long)CF.cookie);
+    printf("Reply in %u parts:\n", tpl_Alen(tr, 1));
+  }
+  while (tpl_unpack(tr, 1) > 0) {
+    if (b.addr == NULL) continue;
+    printf("%.*s\n", b.sz, (char*)b.addr);
+    free(b.addr);
+  }
+
   nn_freemsg(reply);
 
   rc = 0;
@@ -117,6 +132,7 @@ int do_rqst(char *line) {
  done:
   if (rc) CF.run=0;
   if (tn) tpl_free(tn);
+  if (tr) tpl_free(tr);
   if (buf) free(buf);
   return rc;
 }

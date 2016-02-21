@@ -21,7 +21,7 @@ struct _nnctl {
   UT_string out;
 };
 
-static int help_cmd(nnctl *cp, nnctl_arg *arg, void *data) {
+static int help_cmd(nnctl *cp, nnctl_arg *arg, void *data, uint64_t *cookie) {
   UT_string *t;
   utstring_new(t);
   nnctl_cmd_w *cw, *tmp;
@@ -35,7 +35,7 @@ static int help_cmd(nnctl *cp, nnctl_arg *arg, void *data) {
   return 0; 
 }
 
-static int unknown_cmd(nnctl *cp, nnctl_arg *arg, void *data) {
+static int unknown_cmd(nnctl *cp, nnctl_arg *arg, void *data, uint64_t *cookie) {
   char unknown_msg[] = "command not found\n";
   if (arg->argc == 0) return 0;  /* no command; no-op */
   nnctl_append(cp, unknown_msg, sizeof(unknown_msg)-1);
@@ -81,10 +81,11 @@ void nnctl_add_cmd(nnctl *cp, char *name, nnctl_cmdf *cmdf, char *help, void *da
 int nnctl_exec(nnctl *cp, int nn_rep_socket) {
   int rc=-1, argc, i=0;
   nnctl_cmd_w *cw=NULL;
-  tpl_node *tn=NULL;
+  tpl_node *tn=NULL,*tr=NULL;
   tpl_bin b;
-  void *msg=NULL;
-  size_t len;
+  void *msg=NULL, *o;
+  size_t len, l;
+  uint64_t cookie;
 
   /* get the message buffer from nano */
   len = nn_recv(nn_rep_socket, &msg, NN_MSG, 0);
@@ -94,8 +95,9 @@ int nnctl_exec(nnctl *cp, int nn_rep_socket) {
   }
 
   /* unpack it, enforce a bit of reasonable size */
-  if ( (tn = tpl_map("A(B)", &b)) == NULL) goto done;
+  if ( (tn = tpl_map("UA(B)", &cookie, &b)) == NULL) goto done;
   if (tpl_load(tn, TPL_MEM, msg, len) < 0) goto done;
+  tpl_unpack(tn, 0);
   if ( (argc = tpl_Alen(tn,1)) > MAX_ARGC) {
     fprintf(stderr,"excessive arg count: %d\n", argc);
     goto done;
@@ -131,13 +133,18 @@ int nnctl_exec(nnctl *cp, int nn_rep_socket) {
   HASH_FIND(hh, cp->cmds, cp->arg.argv[0], cp->arg.lenv[0], cw);
   if (!cw) cw = &unknown_cmdw;
   utstring_clear(&cp->out);
-  cw->cmd.cmdf(cp, &cp->arg, cw->data);
+  cw->cmd.cmdf(cp, &cp->arg, cw->data, &cookie);
 
   /* reply to client */
-  char *o = utstring_body(&cp->out);
-  size_t l = utstring_len(&cp->out);
+  tr = tpl_map("UA(B)", &cookie, &b);
+  tpl_pack(tr, 0);
+  b.sz = utstring_len(&cp->out);
+  b.addr = utstring_body(&cp->out);
+  tpl_pack(tr,1);
+  tpl_dump(tr, TPL_MEM, &o, &l);
   //fprintf(stderr,"sent %ld bytes to client\n%.*s\n", l, (int)l, o);
   rc = nn_send(nn_rep_socket, o, l, 0);
+  free(o);
   if (rc < 0) goto done;
   rc = 0;
 
@@ -147,6 +154,7 @@ int nnctl_exec(nnctl *cp, int nn_rep_socket) {
   if (cp->arg.lenv) { free(cp->arg.lenv); cp->arg.lenv=NULL; }
   if (msg) nn_freemsg(msg);
   if (tn) tpl_free(tn);
+  if (tr) tpl_free(tr);
   return rc;
 }
 

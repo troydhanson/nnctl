@@ -94,7 +94,7 @@ Command callbacks
 
 The control port commands you define must have this prototype:
 
-    int (nnctl_cmd)(nnctl *cp, nnctl_arg *arg, void *data);
+    int (nnctl_cmd)(nnctl *cp, nnctl_arg *arg, void *data, uint64_t *cookie);
 
 The first argument is there as an opaque pointer which you can pass along to
 `nnctl_printf` when forming a command response. The second argument contains the
@@ -110,7 +110,17 @@ double-quoted strings into a single argument similar to a traditional shell.
   } nnctl_arg;
 ```
 
-The final command argument, data, is just the opaque value that you passed to
+The third command argument, data, is the opaque value that you passed to
+`nnctl_init` or `nnctl_add_cmd` when registering the command.
+
+The fourth command argument, cookie, points to a 64-bit unsigned integer for the
+application to use for per-session state. Each nnctl client that connects has an
+initially-NULL cookie (that is, `*cookie==NULL`). In the command callback you
+can set this to anything (including a pointer, or an index, etc). On subsequent
+commands 'from this particular nnctl client' whatever value you set as the
+cookie is returned to you. (Security is up to you, if you worry about cookie
+forgery). 
+
 `nnctl_init` or `nnctl_add_cmd` when registering the command.
 
 The return value is currently not used but good convention is to return 0 on

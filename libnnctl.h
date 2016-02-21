@@ -2,6 +2,7 @@
 #define LIBNNCTL_H
 
 #include <stdlib.h>
+#include <inttypes.h>
 #include <nanomsg/nn.h>
 
 #if defined __cplusplus
@@ -18,7 +19,7 @@ typedef struct {
 struct _nnctl; /* defined internally in libnnctl.c */
 typedef struct _nnctl nnctl;
 
-typedef int (nnctl_cmdf)(nnctl *, nnctl_arg *arg, void *data);
+typedef int (nnctl_cmdf)(nnctl *, nnctl_arg *arg, void *data, uint64_t *cookie);
 
 typedef struct {
   char *name;

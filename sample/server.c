@@ -79,7 +79,7 @@ int new_epoll(int events, int fd) {
 }
 
 /* enumerate nano symbols */
-int symbols_cmd(nnctl *cp, nnctl_arg *arg, void *data) {
+int symbols_cmd(nnctl *cp, nnctl_arg *arg, void *data, uint64_t *cookie) {
   const char *c=NULL;
   int i=0,val;
   do {
@@ -90,7 +90,7 @@ int symbols_cmd(nnctl *cp, nnctl_arg *arg, void *data) {
   return 0;
 }
 
-int shutdown_cmd(nnctl *cp, nnctl_arg *arg, void *data) {
+int shutdown_cmd(nnctl *cp, nnctl_arg *arg, void *data, uint64_t *cookie) {
   nnctl_printf(cp,"Shutting down\n");
   CF.request_exit=1;
   return 0;
