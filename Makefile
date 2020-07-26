@@ -21,7 +21,7 @@ nnctl: nnctl.o tpl.o
 install: $(OBJS)
 	cp nnctl $(PREFIX)/bin
 	cp libnnctl.a $(PREFIX)/lib
-	cp nnctl.h $(PREFIX)/include
+	cp libnnctl.h $(PREFIX)/include
 
 .PHONY: clean $(SUBDIRS) sample
 
